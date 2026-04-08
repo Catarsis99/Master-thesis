@@ -1,0 +1,105 @@
+
+import numpy as np
+import pandas as pd
+from astropy.coordinates import SkyCoord, EarthLocation, AltAz
+from astropy.time import Time
+import astropy.units as u
+
+# ---------------------------------------------------
+# 1. Observatory location and observation time
+# ---------------------------------------------------
+lat = 51.0504
+lon = 13.7373
+height_m = 113
+
+location = EarthLocation(
+    lat=lat * u.deg,
+    lon=lon * u.deg,
+    height=height_m * u.m
+)
+
+t_obs = Time("2026-03-18T21:00:00", scale="utc")
+
+# ---------------------------------------------------
+# 2. Define Alt/Az scan grid
+# ---------------------------------------------------
+altitudes_deg = [15, 30, 45, 60, 75]
+az_list = np.arange(0, 360, 45)
+
+# ---------------------------------------------------
+# 3. Create AltAz frame
+# ---------------------------------------------------
+altaz_frame = AltAz(obstime=t_obs, location=location)
+
+# ---------------------------------------------------
+# 4. Convert Alt/Az → RA/Dec
+# ---------------------------------------------------
+pointings = []
+
+for alt in altitudes_deg:
+    for az in az_list:
+
+        altaz_coord = SkyCoord(
+            alt=alt * u.deg,
+            az=az * u.deg,
+            frame=altaz_frame
+        )
+
+        icrs_coord = altaz_coord.transform_to("icrs")
+
+        pointings.append({
+            "alt_deg": alt,
+            "az_deg": az,
+            "ra_deg": icrs_coord.ra.deg,
+            "dec_deg": icrs_coord.dec.deg
+        })
+
+# ---------------------------------------------------
+# 5. Convert to DataFrame
+# ---------------------------------------------------
+df_pointings = pd.DataFrame(pointings)
+
+# ---------------------------------------------------
+# 6. Print results
+# ---------------------------------------------------
+for _, row in df_pointings.iterrows():
+    print(
+        f"Alt={row.alt_deg:5.1f}  "
+        f"Az={row.az_deg:6.1f}  →  "
+        f"RA={row.ra_deg:8.3f}  "
+        f"Dec={row.dec_deg:8.3f}"
+    )
+
+base_tail = "c=3970&et=3970&g=20&d=14&t=1772663990"
+
+# Group pointings by altitude (in creation order)
+from collections import defaultdict
+by_alt = defaultdict(list)
+for p in pointings:
+    by_alt[p["alt_deg"]].append(p)
+
+all_links = []
+counter = 1
+
+for alt in sorted(by_alt.keys()):
+    print(f"* {int(alt)} degrees")
+
+    ring = by_alt[alt]
+    ring8 = ring[:7] + [ring[0]]
+
+    for p in ring8:
+        group_id = f"x20260304skyglow{counter:05d}"
+        link = (
+            f"unistellar://science/transient?"
+            f"ra={p['ra_deg']:.6f}&dec={p['dec_deg']:.6f}&{base_tail}&scitag={group_id}"
+        )
+
+        test_name = f"Test {counter}_alt_{int(alt)}"
+
+        # HTML block for every link
+        print('[[html]]')
+        print(f'<a href="{link}"> {test_name} </a>')
+        print('[[/html]]')
+
+        all_links.append(link)
+        counter += 1
